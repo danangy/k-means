@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Penduduk</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map { height: 400px; margin-top: 20px; }
+        canvas { max-width: 600px; margin-top: 20px; }
+        .cluster-details { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Aplikasi Penduduk</h1>
+    <input type="number" id="k-value" placeholder="Masukkan nilai K" min="2" />
+    <button onclick="submitK()">Cluster</button>
+    
+    <div id="map"></div>
+    <canvas id="myChart"></canvas>
+
+    <div class="cluster-details" id="cluster-details"></div>
+
+    <script>
+        let map; // Variabel untuk peta
+        const colors = ['red', 'blue', 'green', 'purple', 'orange', 'pink', 'brown', 'cyan']; // Warna cluster
+
+        // Fungsi untuk mengirim permintaan clustering
+        function submitK() {
+            const k = document.getElementById('k-value').value;
+            if (k < 2) {
+                alert('Nilai K minimal adalah 2.');
+                return;
+            }
+
+            fetch('/cluster', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ k }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                updateMap(data);  // Perbarui peta
+                updateChart(data); // Perbarui chart
+                displayClusterDetails(data); // Tampilkan detail cluster
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        // Fungsi untuk memperbarui peta dengan titik berwarna
+        function updateMap(data) {
+            if (map) {
+                map.remove(); // Hapus peta sebelumnya
+            }
+            map = L.map('map').setView([-6.6800, 110.6750], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            data.penduduk.forEach(p => {
+                const color = colors[p.cluster % colors.length] || 'black'; // Warna berdasarkan cluster
+                const marker = L.circleMarker([p.X, p.Y], {
+                    radius: 8, // Ukuran titik
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.8,
+                });
+
+                marker.addTo(map).bindPopup(`${p.Nama} - Cluster ${p.cluster}`);
+            });
+        }
+
+        // Fungsi untuk memperbarui chart dengan data cluster
+        let chart;
+        function updateChart(data) {
+            const labels = [...new Set(data.penduduk.map(p => `Cluster ${p.cluster}`))];
+            const counts = labels.map(label =>
+                data.penduduk.filter(p => `Cluster ${p.cluster}` === label).length
+            );
+
+            const ctx = document.getElementById('myChart').getContext('2d');
+            if (chart) {
+                chart.destroy(); // Hapus chart sebelumnya
+            }
+            chart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Jumlah Penduduk per Cluster',
+                        data: counts,
+                        backgroundColor: colors.slice(0, labels.length),
+                    }]
+                },
+            });
+        }
+
+        // Fungsi untuk menampilkan detail setiap cluster
+        function displayClusterDetails(data) {
+            const clusterDetailsDiv = document.getElementById('cluster-details');
+            clusterDetailsDiv.innerHTML = ''; // Bersihkan konten sebelumnya
+
+            const clusters = data.penduduk.reduce((acc, p) => {
+                if (!acc[p.cluster]) {
+                    acc[p.cluster] = [];
+                }
+                acc[p.cluster].push(p);
+                return acc;
+            }, {});
+
+            // Tampilkan detail untuk setiap cluster
+            Object.keys(clusters).forEach(clusterId => {
+                const clusterHeader = document.createElement('h2');
+                clusterHeader.textContent = `Cluster ${clusterId}`;
+                clusterDetailsDiv.appendChild(clusterHeader);
+
+                const ul = document.createElement('ul');
+                clusters[clusterId].forEach(p => {
+                    const li = document.createElement('li');
+                    li.textContent = `Nama: ${p.Nama}, NIK: ${p.NIK}, Alamat: ${p.Alamat}`;
+                    ul.appendChild(li);
+                });
+                clusterDetailsDiv.appendChild(ul);
+            });
+        }
+    </script>
+</body>
+</html>
